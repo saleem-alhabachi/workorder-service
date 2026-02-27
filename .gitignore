@@ -1,0 +1,5 @@
+﻿.venv/
+.env
+workorders.db
+__pycache__/
+*.pyc
