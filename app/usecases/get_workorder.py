@@ -1,8 +1,15 @@
-﻿from app.domain.ports import WorkOrderRepository
-from app.domain.errors import NotFound
+# app/usecases/get_workorder.py
+from __future__ import annotations
 
-def get_workorder(repo: WorkOrderRepository, workorder_id: str):
-    wo = repo.get(workorder_id)
-    if not wo or wo.is_deleted:
-        raise NotFound(f"WorkOrder not found: {workorder_id}")
-    return wo
+from uuid import UUID
+
+from app.domain.entities import WorkOrder
+from app.domain.interfaces import WorkOrderRepository
+
+
+class GetWorkOrderUseCase:
+    def __init__(self, repository: WorkOrderRepository) -> None:
+        self._repository = repository
+
+    async def execute(self, id: UUID) -> WorkOrder | None:
+        return await self._repository.get_by_id(id)

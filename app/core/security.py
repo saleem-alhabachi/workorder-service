@@ -1,35 +1,56 @@
-﻿from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-import jwt
-from jwt import PyJWTError
+# app/core/security.py
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone, timedelta
+from typing import Any
+
+from jose import JWTError, jwt
+
 from app.core.config import settings
+
 
 @dataclass(frozen=True)
 class User:
     sub: str
-    role: str  # viewer | editor
+    role: str  # "viewer" | "editor"
 
-def create_token(user_id: str, role: str = "editor") -> str:
+
+def create_access_token(
+    subject: str,
+    role: str = "viewer",
+    expires_delta: timedelta | None = None,
+) -> str:
     now = datetime.now(timezone.utc)
-    payload = {
-        "iss": settings.jwt_issuer,
-        "aud": settings.jwt_audience,
-        "sub": user_id,
+    expire = now + (
+        expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    payload: dict[str, Any] = {
+        "sub": subject,
         "role": role,
-        "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(minutes=settings.jwt_expires_minutes)).timestamp()),
+        "exp": expire,
+        "iat": now,
     }
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return jwt.encode(
+        payload,
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
 
-def verify_token(token: str) -> User:
+
+def decode_token(token: str) -> User:
     try:
         payload = jwt.decode(
             token,
-            settings.jwt_secret,
-            algorithms=[settings.jwt_algorithm],
-            audience=settings.jwt_audience,
-            issuer=settings.jwt_issuer,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
         )
-        return User(sub=str(payload["sub"]), role=str(payload.get("role", "viewer")))
-    except PyJWTError as e:
+        sub = payload.get("sub")
+        role = payload.get("role", "viewer")
+        if not sub:
+            raise ValueError("Missing sub in token")
+        if role not in ("viewer", "editor"):
+            role = "viewer"
+        return User(sub=str(sub), role=role)
+    except JWTError as e:
         raise ValueError("Invalid token") from e

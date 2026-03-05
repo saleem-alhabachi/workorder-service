@@ -1,180 +1,130 @@
-# Workorder Service
+# Work Orders API
 
-A production-grade backend microservice built with **FastAPI** that demonstrates clean architecture, REST API design, security, observability, containerization, and CI/CD concepts.
+Production-ready FastAPI application following **Clean Architecture** principles. Async PostgreSQL (asyncpg), JWT auth, Prometheus metrics, and structured logging.
 
-This project was developed as part of a university assignment to design and partially implement a real-world microservice.
+## Project structure
 
----
-
-## 🚀 Features
-
-- Clean Architecture (Domain, Use Cases, Infrastructure, API layers)
-- RESTful API with OpenAPI (Swagger)
-- JWT-based authentication & role-based authorization
-- SQLite persistence using SQLAlchemy
-- Structured JSON logging
-- Prometheus metrics & health checks
-- Docker & Docker Compose support
-- GitHub Actions CI pipeline
-- Automated tests with pytest
-
----
-
-## 🧱 Architecture
-
-The project follows **Clean Architecture** principles:
+```
 app/
-├── api/ # HTTP layer (FastAPI routes, dependencies)
-├── core/ # Configuration, logging, security
-├── domain/ # Business entities, rules, interfaces
-├── usecases/ # Application use cases
-├── infrastructure/ # Database, repositories, observability
-└── main.py # Application entry point
+├── api/           # HTTP layer: dependencies, router, v1/workorders
+├── core/           # Config, logging, security (JWT)
+├── domain/         # Entities, enums, repository interface (no framework)
+├── usecases/       # Business logic (depends only on domain)
+├── infrastructure/ # DB, ORM models, repository impl, observability
+└── main.py
+```
 
+## Requirements
 
-**Key idea:**  
-Business logic is independent of frameworks, databases, and delivery mechanisms.
+- Python 3.11+
+- PostgreSQL 15+ (or use Docker)
 
----
+## Setup
 
-## 🔐 Security
+1. Copy environment and set values:
 
-- Authentication via **JWT (Bearer tokens)**
-- Role-based authorization:
-  - `viewer` → read-only access
-  - `editor` → create/update access
-- Token expiry and signature validation
+   ```bash
+   cp .env.example .env
+   # Edit .env: DATABASE_URL, SECRET_KEY, etc.
+   ```
 
-Example header:
-Authorization: Bearer <JWT_TOKEN>
+2. Create a virtualenv and install dependencies:
 
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+   pip install -r requirements.txt
+   ```
 
----
+3. **Create the database** if it doesn't exist (PostgreSQL only):
 
-## 📡 API Endpoints
+   ```bash
+   python scripts/create_db.py
+   ```
 
-Base URL: `http://127.0.0.1:8000`
+   If that fails (e.g. password for user `postgres`), create it manually:
 
-| Method | Endpoint | Description |
-|------|--------|------------|
-| GET | `/health/live` | Liveness probe |
-| GET | `/health/ready` | Readiness probe |
-| GET | `/metrics` | Prometheus metrics |
-| POST | `/api/v1/workorders` | Create work order |
-| GET | `/api/v1/workorders` | List work orders |
-| GET | `/api/v1/workorders/{id}` | Get work order |
-| PATCH | `/api/v1/workorders/{id}/status` | Update status |
+   ```bash
+   sudo -u postgres psql -c "CREATE DATABASE workorder_db;"
+   # or use the database name from your DATABASE_URL
+   ```
 
-Swagger UI: http://127.0.0.1:8000/docs
+4. Run migrations (optional; app also creates tables on startup):
 
+   ```bash
+   alembic upgrade head
+   ```
 
----
+5. Start the server:
 
-## 📊 Observability
+   ```bash
+   uvicorn app.main:app --reload
+   ```
 
-### Logging
-- Structured JSON logs
-- Request ID tracing
-- Request duration logging
+If you see **"database X does not exist"**, create that database (step 3) then start again.
 
-### Monitoring
-- Prometheus metrics exposed at `/metrics`
-- HTTP request counters and latency histograms
+## Docker
 
----
-
-## 🧪 Testing
-
-Basic automated tests are implemented using **pytest**.
-
-Run tests:
 ```bash
-pytest -q
+# Set SECRET_KEY in .env or pass inline
+export SECRET_KEY=your-secret-key
+docker-compose up --build
+```
 
-🐳 Containerization
-Docker
+- **API**: http://localhost:8000  
+- **Docs**: http://localhost:8000/docs  
+- **Health**: http://localhost:8000/health/live, http://localhost:8000/health/ready  
+- **Metrics**: http://localhost:8000/metrics  
+- **Prometheus**: http://localhost:9090  
+- **Grafana**: http://localhost:3000 (admin / admin)
 
-A Dockerfile is provided for containerized deployment.
+## API
 
-Build & run:
-docker build -t workorder-service .
-docker run -p 8000:8000 workorder-service
-docker-compose up
+- `POST /api/v1/workorders` — create (editor only)
+- `GET /api/v1/workorders` — list (viewer+)
+- `GET /api/v1/workorders/{id}` — get one (viewer+)
+- `PATCH /api/v1/workorders/{id}/status` — update status (editor only)
 
+All protected routes require: `Authorization: Bearer <JWT>`.  
+Token payload: `sub` (user id), `role` (`viewer` | `editor`), `exp`.
 
+## Status transitions (enforced in use case)
 
-🔁 CI/CD
+- **PENDING** → IN_PROGRESS, CANCELLED  
+- **IN_PROGRESS** → COMPLETED, CANCELLED  
+- **COMPLETED** / **CANCELLED** → no transitions  
 
-The project includes a GitHub Actions workflow:
+Invalid transitions return `422` with a domain error message.
 
-Runs on every push and pull request
+## Tests
 
-Installs dependencies
+```bash
+DATABASE_URL=postgresql://localhost/test SECRET_KEY=test PYTHONPATH=. pytest tests/ -v
+```
 
-Executes automated tests
+Uses SQLite in-memory for the test DB (overridden in `conftest.py`).
 
-Workflow file:
-.github/workflows/ci.yml
+### Test all routes (against running server)
 
+With the app running, hit every route and check status codes:
 
+```bash
+python scripts/test_routes.py
+# or against another host:
+python scripts/test_routes.py http://localhost:8000
+```
 
-⚙️ Environment Variables
+Requires `SECRET_KEY` (and `DATABASE_URL` if not in `.env`) so the script can issue JWTs.
 
-Example .env file:
-APP_ENV=dev
-APP_NAME=workorder-service
-DATABASE_URL=sqlite:///./workorders.db
-JWT_SECRET=supersecretkey
-JWT_ISSUER=workorder-service
-JWT_AUDIENCE=workorder-clients
-LOG_LEVEL=INFO
+## Checklist (from spec)
 
-
-▶️ Running Locally
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-
-
-📚 Technologies Used
-
-Python 3.11
-
-FastAPI
-
-SQLAlchemy
-
-Pydantic
-
-Uvicorn
-
-PyJWT
-
-Prometheus Client
-
-Docker
-
-GitHub Actions
-
-Pytest
-
-
-🎓 Academic Context
-
-This project was developed to demonstrate:
-
-Software architecture principles
-
-Backend service design
-
-Security fundamentals
-
-Observability and monitoring
-
-CI/CD concepts
-
-
-👤 Author
-
-Saleem Alhabachi
+- Domain layer has no FastAPI/SQLAlchemy imports  
+- Use cases only import from `domain/`  
+- Repository interface in `domain/`, implementation in `infrastructure/`  
+- JWT guards on the correct routes  
+- Status transition rule in use case; API returns 422 on invalid transition  
+- `/health/ready` pings the database  
+- `/metrics` via prometheus-fastapi-instrumentator  
+- Eight tests implemented with async fixtures  
+- docker-compose: app, db, prometheus, grafana  
+- `.env.example` includes required keys  

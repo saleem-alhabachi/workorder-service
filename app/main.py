@@ -1,79 +1,108 @@
-﻿import time
-import uuid
-import logging
+# app/main.py
+from __future__ import annotations
 
-from fastapi import FastAPI, Request, Response
+import time
+import uuid
+import os
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
+import structlog
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from sqlalchemy import text
 
+from app.api.router import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging
-from app.api.routes_workorders import router as workorders_router
-from app.infrastructure.db.session import engine
-from app.infrastructure.db.sqlalchemy_models import Base
-from app.infrastructure.observability.metrics import REQUESTS_TOTAL, REQUEST_LATENCY
+from app.infrastructure.database import ensure_database_exists, engine
+from app.infrastructure.models import Base
+from app.infrastructure.observability import setup_metrics
 
-configure_logging(settings.log_level)
-log = logging.getLogger("app")
 
-app = FastAPI(title=settings.app_name)
+password = os.getenv("POSTGRES_PASSWORD")
+configure_logging(settings.LOG_LEVEL)
+logger = structlog.get_logger()
+
+
+def _get_db_name_from_url() -> str | None:
+    from sqlalchemy.engine import make_url
+    try:
+        url = make_url(settings.DATABASE_URL)
+        return url.database or None
+    except Exception:
+        return None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    await ensure_database_exists()
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "does not exist" in err_msg or "invalid_catalog_name" in err_msg:
+            db_name = _get_db_name_from_url() or "workorder"
+            raise RuntimeError(
+                f"Database '{db_name}' does not exist. Create it with:\n"
+                f"  sudo -u postgres psql -c \"CREATE DATABASE {db_name};\"\n"
+                f"Or (if you have postgres password):\n"
+                f"  PGPASSWORD={password} psql -U postgres -h localhost -c \"CREATE DATABASE {db_name};\""
+            ) from e
+        raise
+    yield
+    await engine.dispose()
+
+
+app = FastAPI(title="Work Orders API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-def on_startup():
-    Base.metadata.create_all(bind=engine)
-    log.info("startup_complete", extra={"request_id": "-"})
 
 @app.middleware("http")
-async def observability_middleware(request: Request, call_next):
-    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
-    start = time.time()
-    path = request.url.path
-    method = request.method
-    response = None
-    try:
-        response = await call_next(request)
-        return response
-    finally:
-        duration = time.time() - start
-        status_code = getattr(response, "status_code", 500)
-        REQUESTS_TOTAL.labels(method=method, path=path, status=str(status_code)).inc()
-        REQUEST_LATENCY.labels(method=method, path=path).observe(duration)
-        log.info(
-            "request",
-            extra={
-                "request_id": request_id,
-                "method": method,
-                "path": path,
-                "status": status_code,
-                "duration_ms": int(duration * 1000),
-            },
-        )
+async def request_id_and_logging_middleware(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    logger.info(
+        "request",
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        duration_ms=round(duration_ms, 2),
+    )
+    response.headers["X-Request-ID"] = request_id
+    return response
+
 
 @app.get("/health/live")
-def health_live():
+async def health_live() -> dict[str, str]:
     return {"status": "ok"}
 
+
 @app.get("/health/ready")
-def health_ready():
+async def health_ready():
     try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        return {"status": "ok"}
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return {"status": "ok", "db": "connected"}
     except Exception:
-        return Response(content='{"status":"not_ready"}', media_type="application/json", status_code=503)
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "db": "disconnected"},
+        )
 
-@app.get("/metrics")
-def metrics():
-    data = generate_latest()
-    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
-app.include_router(workorders_router)
+setup_metrics(app)
+app.include_router(api_router, prefix="/api")

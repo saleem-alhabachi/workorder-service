@@ -1,25 +1,13 @@
-﻿from dataclasses import dataclass
-from datetime import date
-from app.domain.models import WorkOrderStatus
-from app.domain.ports import WorkOrderRepository
+# app/usecases/list_workorders.py
+from __future__ import annotations
 
-@dataclass(frozen=True)
-class ListWorkOrdersInput:
-    status: WorkOrderStatus | None = None
-    assignee_id: str | None = None
-    due_from: date | None = None
-    due_to: date | None = None
-    limit: int = 50
-    offset: int = 0
+from app.domain.entities import WorkOrder
+from app.domain.interfaces import WorkOrderRepository
 
-def list_workorders(repo: WorkOrderRepository, inp: ListWorkOrdersInput):
-    return list(
-        repo.list(
-            status=inp.status,
-            assignee_id=inp.assignee_id,
-            due_from=inp.due_from,
-            due_to=inp.due_to,
-            limit=inp.limit,
-            offset=inp.offset,
-        )
-    )
+
+class ListWorkOrdersUseCase:
+    def __init__(self, repository: WorkOrderRepository) -> None:
+        self._repository = repository
+
+    async def execute(self) -> list[WorkOrder]:
+        return await self._repository.list_all()
