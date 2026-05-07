@@ -10,6 +10,8 @@ from typing import AsyncIterator
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from sqlalchemy import text
 
 from app.api.router import api_router
@@ -55,7 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await engine.dispose()
 
 
-app = FastAPI(title="Work Orders API", lifespan=lifespan)
+app = FastAPI(title="Work Orders API", lifespan=lifespan, docs_url=None, redoc_url=None)
 
 app.add_middleware(
     CORSMiddleware,
@@ -106,3 +108,16 @@ async def health_ready():
 
 setup_metrics(app)
 app.include_router(api_router, prefix="/api")
+
+# Serve dashboard static files
+app.mount("/dashboard", StaticFiles(directory="app/static/dashboard", html=True), name="dashboard")
+
+
+@app.get("/docs")
+async def docs_redirect():
+    return RedirectResponse(url="/dashboard")
+
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/dashboard")

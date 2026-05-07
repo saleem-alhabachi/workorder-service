@@ -2,6 +2,8 @@
 
 Production-ready FastAPI application following **Clean Architecture** principles. Async PostgreSQL (asyncpg), JWT auth, Prometheus metrics, and structured logging.
 
+**Full product and technical documentation** (Executive Summary, Architecture, Security, Roles, Deployment, etc.): **[docs/PRODUCT.md](docs/PRODUCT.md)**.
+
 ## Project structure
 
 ```

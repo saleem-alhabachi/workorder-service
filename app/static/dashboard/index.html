@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced API Workspace</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22currentColor%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6%22/></svg>">
+</head>
+<body class="dark-theme">
+    <div class="workspace">
+        
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="logo-icon"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><polyline points="14 2 14 8 20 8"/><path d="M2 15h10"/><path d="m9 18 3-3-3-3"/></svg>
+                <span class="logo-text">API Workspace</span>
+            </div>
+            
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" data-target="endpoints-nav">Endpoints</button>
+                <button class="sidebar-tab" data-target="auth-nav">Auth</button>
+                <button class="sidebar-tab" data-target="test-nav">Tests</button>
+            </div>
+
+            <div class="nav-content active" id="endpoints-nav">
+                <div class="search-box">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input type="text" id="routeSearch" placeholder="Filter endpoints...">
+                </div>
+                <div class="endpoints-list" id="sidebar-endpoints">
+                    <!-- Dynamic endpoints list -->
+                    <div class="loading-state">Loading OpenAPI specs...</div>
+                </div>
+            </div>
+
+            <div class="nav-content" id="auth-nav">
+                <div class="auth-panel">
+                    <h3 class="panel-title">Token Generator</h3>
+                    <p class="panel-desc">Generate JWT for protected routes.</p>
+                    <div class="form-group">
+                        <label>User Role</label>
+                        <select id="authRole">
+                            <option value="viewer">Viewer</option>
+                            <option value="editor">Editor</option>
+                        </select>
+                    </div>
+                    <button id="generateToken" class="btn btn-primary w-100">Generate Token</button>
+                    <div class="token-result hidden" id="tokenResult">
+                        <label>Active Token</label>
+                        <div class="input-with-action">
+                            <input type="text" id="activeToken" readonly>
+                            <button id="copyToken" class="btn-icon" title="Copy"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="nav-content" id="test-nav">
+                 <div class="test-panel">
+                    <h3 class="panel-title">Test Runner</h3>
+                    <button id="runIntegration" class="btn btn-secondary w-100 mb-2">Run Route Tests</button>
+                    <button id="runPytest" class="btn btn-secondary w-100">Run Pytest Suite</button>
+                 </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace Area -->
+        <main class="main-area">
+            
+            <!-- Default Empty State -->
+            <div id="empty-state" class="empty-state active">
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                <h2>Select an Endpoint</h2>
+                <p>Choose an API route from the sidebar to view documentation and execute requests.</p>
+            </div>
+
+            <!-- Active Endpoint View -->
+            <div id="endpoint-view" class="endpoint-view hidden">
+                
+                <!-- Top Header & URL Editor -->
+                <header class="endpoint-header">
+                    <div class="endpoint-title">
+                        <span id="ep-method" class="method-badge">GET</span>
+                        <h1 id="ep-name">Endpoint Name</h1>
+                    </div>
+                    <p id="ep-desc" class="endpoint-desc">Endpoint description goes here.</p>
+                    
+                    <div class="url-bar">
+                        <div class="url-input-wrapper">
+                            <span class="url-base">http://localhost:8000</span>
+                            <input type="text" id="url-editor" class="url-editor" value="/api/v1/resource">
+                        </div>
+                        <button id="btn-execute" class="btn btn-primary btn-execute">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            Send
+                        </button>
+                    </div>
+                </header>
+
+                <div class="workspace-split">
+                    <!-- Left Column: Request Configuration -->
+                    <div class="request-config">
+                        <div class="tabs-header">
+                            <button class="req-tab active" data-target="tab-params">Params</button>
+                            <button class="req-tab" data-target="tab-headers">Headers</button>
+                            <button class="req-tab" data-target="tab-body">Body</button>
+                        </div>
+                        
+                        <div class="req-content active" id="tab-params">
+                            <div id="path-params-container" class="hidden">
+                                <h3>Path Parameters</h3>
+                                <table class="param-table" id="path-params-table">
+                                    <thead><tr><th>Name</th><th>Value</th></tr></thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div id="query-params-container" class="hidden mt-4">
+                                <h3>Query Parameters</h3>
+                                <table class="param-table" id="query-params-table">
+                                    <thead><tr><th>Name</th><th>Value</th></tr></thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div id="no-params-msg" class="empty-msg">This endpoint requires no parameters.</div>
+                        </div>
+
+                        <div class="req-content" id="tab-headers">
+                            <table class="param-table">
+                                <thead><tr><th>Name</th><th>Value</th></tr></thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Authorization</td>
+                                        <td><input type="text" id="auth-header-input" placeholder="Bearer auto-filled if generated"></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Content-Type</td>
+                                        <td><input type="text" value="application/json" readonly></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="req-content" id="tab-body">
+                            <div id="body-schema-info" class="schema-info">Schema: N/A</div>
+                            <textarea id="body-editor" class="code-editor" spellcheck="false" placeholder="{&#10;  // Enter JSON body here&#10;}"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Response & Snippets -->
+                    <div class="response-panel">
+                        <div class="tabs-header">
+                            <button class="res-tab active" data-target="tab-response">Response</button>
+                            <button class="res-tab" data-target="tab-snippets">Snippets</button>
+                        </div>
+                        
+                        <div class="res-content active" id="tab-response">
+                            <div class="response-meta hidden" id="response-meta">
+                                <span id="res-status" class="status-badge">200 OK</span>
+                                <span id="res-time" class="time-badge">120ms</span>
+                            </div>
+                            <pre id="response-viewer" class="code-viewer">Hit 'Send' to execute request.</pre>
+                        </div>
+
+                        <div class="res-content" id="tab-snippets">
+                            <div class="snippet-lang-selector">
+                                <select id="snippet-lang">
+                                    <option value="curl">cURL</option>
+                                    <option value="python">Python (Requests)</option>
+                                    <option value="javascript">JavaScript (Fetch)</option>
+                                    <option value="go">Go (net/http)</option>
+                                    <option value="java">Java (HttpClient)</option>
+                                    <option value="php">PHP (cURL)</option>
+                                    <option value="csharp">C# (HttpClient)</option>
+                                </select>
+                            </div>
+                            <pre id="snippet-viewer" class="code-viewer code-snippet"></pre>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Global Toast -->
+    <div id="toast" class="toast">Message</div>
+
+    <script src="app.js"></script>
+</body>
+</html>
